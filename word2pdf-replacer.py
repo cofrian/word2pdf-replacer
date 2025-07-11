@@ -2,6 +2,15 @@ import streamlit as st
 import os
 from docx import Document
 from docx2pdf import convert
+import tkinter as tk
+from tkinter import filedialog
+
+def seleccionar_carpeta(titulo="Selecciona una carpeta"):
+    root = tk.Tk()
+    root.withdraw()  # Oculta la ventana principal de Tkinter
+    carpeta = filedialog.askdirectory(title=titulo)
+    root.destroy()
+    return carpeta
 
 def reemplazar_en_documento(ruta_entrada, ruta_salida, reemplazos):
     doc = Document(ruta_entrada)
@@ -25,9 +34,15 @@ def reemplazar_en_documento(ruta_entrada, ruta_salida, reemplazos):
 # --- Streamlit UI ---
 st.title("🔄 Reemplazo Masivo en Word y Exportación a PDF")
 
-# Seleccionar carpeta
-carpeta = st.text_input("📁 Ruta de la carpeta con archivos .docx")
-carpeta_salida = st.text_input("📂 Ruta de la carpeta de salida para PDFs (dejar vacío para usar la misma)")
+if st.button("📁 Seleccionar carpeta de entrada"):
+    carpeta = seleccionar_carpeta("Selecciona la carpeta con archivos .docx")
+    st.session_state['carpeta'] = carpeta
+    st.success(f"Carpeta seleccionada: {carpeta}")
+
+if st.button("📂 Seleccionar carpeta de salida"):
+    carpeta_salida = seleccionar_carpeta("Selecciona la carpeta de salida para los PDFs")
+    st.session_state['carpeta_salida'] = carpeta_salida
+    st.success(f"Carpeta de salida: {carpeta_salida}")
 
 # Diccionario de reemplazos
 st.markdown("✏️ **Agrega pares de texto a buscar y reemplazar**")
@@ -42,13 +57,14 @@ for i in range(num_pares):
 
 # Procesar botón
 if st.button("🚀 Procesar documentos y exportar a PDF"):
+    carpeta = st.session_state.get('carpeta')
+    carpeta_salida = st.session_state.get('carpeta_salida')
+
     if not carpeta or not os.path.exists(carpeta):
-        st.error("❌ Carpeta no válida")
+        st.error("❌ Carpeta de entrada no válida")
+    elif not carpeta_salida or not os.path.exists(carpeta_salida):
+        st.error("❌ Carpeta de salida no válida")
     else:
-        salida = carpeta_salida if carpeta_salida else carpeta
-        if not os.path.exists(salida):
-            os.makedirs(salida)
-        
         archivos = [f for f in os.listdir(carpeta) if f.endswith(".docx")]
         total = len(archivos)
         if total == 0:
@@ -58,7 +74,7 @@ if st.button("🚀 Procesar documentos y exportar a PDF"):
             for archivo in archivos:
                 ruta_docx = os.path.join(carpeta, archivo)
                 nombre_modificado = f"MOD_{archivo}"
-                ruta_modificado = os.path.join(salida, nombre_modificado)
+                ruta_modificado = os.path.join(carpeta_salida, nombre_modificado)
                 
                 # Reemplazar texto y guardar el nuevo .docx
                 reemplazar_en_documento(ruta_docx, ruta_modificado, reemplazos)
@@ -71,4 +87,6 @@ if st.button("🚀 Procesar documentos y exportar a PDF"):
             
             st.balloons()
             st.info(f"🎉 ¡Todos los documentos ({total}) han sido procesados y convertidos a PDF!")
+
+
 
