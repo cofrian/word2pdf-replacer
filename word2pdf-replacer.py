@@ -2,15 +2,8 @@ import streamlit as st
 import os
 from docx import Document
 from docx2pdf import convert
-import tkinter as tk
-from tkinter import filedialog
-
-def seleccionar_carpeta(titulo="Selecciona una carpeta"):
-    root = tk.Tk()
-    root.withdraw()  # Oculta la ventana principal de Tkinter
-    carpeta = filedialog.askdirectory(title=titulo)
-    root.destroy()
-    return carpeta
+import zipfile
+import shutil
 
 def reemplazar_en_documento(ruta_entrada, ruta_salida, reemplazos):
     doc = Document(ruta_entrada)
@@ -34,15 +27,9 @@ def reemplazar_en_documento(ruta_entrada, ruta_salida, reemplazos):
 # --- Streamlit UI ---
 st.title("🔄 Reemplazo Masivo en Word y Exportación a PDF")
 
-if st.button("📁 Seleccionar carpeta de entrada"):
-    carpeta = seleccionar_carpeta("Selecciona la carpeta con archivos .docx")
-    st.session_state['carpeta'] = carpeta
-    st.success(f"Carpeta seleccionada: {carpeta}")
-
-if st.button("📂 Seleccionar carpeta de salida"):
-    carpeta_salida = seleccionar_carpeta("Selecciona la carpeta de salida para los PDFs")
-    st.session_state['carpeta_salida'] = carpeta_salida
-    st.success(f"Carpeta de salida: {carpeta_salida}")
+# Subir archivo ZIP con .docx
+archivo_zip = st.file_uploader("📦 Sube un archivo ZIP con documentos Word (.docx)", type="zip")
+    
 
 # Diccionario de reemplazos
 st.markdown("✏️ **Agrega pares de texto a buscar y reemplazar**")
@@ -56,37 +43,56 @@ for i in range(num_pares):
         reemplazos[buscar] = reemplazar
 
 # Procesar botón
-if st.button("🚀 Procesar documentos y exportar a PDF"):
-    carpeta = st.session_state.get('carpeta')
-    carpeta_salida = st.session_state.get('carpeta_salida')
-
-    if not carpeta or not os.path.exists(carpeta):
-        st.error("❌ Carpeta de entrada no válida")
-    elif not carpeta_salida or not os.path.exists(carpeta_salida):
-        st.error("❌ Carpeta de salida no válida")
+if st.button("🚀 Procesar y exportar a PDF"):
+    if archivo_zip is None:
+        st.error("❌ Debes subir un archivo ZIP con documentos .docx")
+    elif not reemplazos:
+        st.error("❌ Debes añadir al menos un par búsqueda/reemplazo")
     else:
-        archivos = [f for f in os.listdir(carpeta) if f.endswith(".docx")]
-        total = len(archivos)
-        if total == 0:
-            st.warning("⚠️ No hay archivos .docx en la carpeta seleccionada.")
-        else:
-            st.info(f"🔄 Procesando {total} documentos...")
+        with st.spinner("⏳ Procesando documentos..."):
+            # Crear carpetas temporales
+            temp_input = "temp_input"
+            temp_output = "temp_output"
+            os.makedirs(temp_input, exist_ok=True)
+            os.makedirs(temp_output, exist_ok=True)
+
+            # Extraer ZIP subido
+            with zipfile.ZipFile(archivo_zip, 'r') as zip_ref:
+                zip_ref.extractall(temp_input)
+            
+            # Procesar documentos
+            archivos = [f for f in os.listdir(temp_input) if f.endswith('.docx')]
             for archivo in archivos:
-                ruta_docx = os.path.join(carpeta, archivo)
+                ruta_docx = os.path.join(temp_input, archivo)
                 nombre_modificado = f"MOD_{archivo}"
-                ruta_modificado = os.path.join(carpeta_salida, nombre_modificado)
-                
-                # Reemplazar texto y guardar el nuevo .docx
+                ruta_modificado = os.path.join(temp_output, nombre_modificado)
+
+                # Reemplazo y guardar .docx
                 reemplazar_en_documento(ruta_docx, ruta_modificado, reemplazos)
 
                 # Convertir a PDF
                 ruta_pdf = ruta_modificado.replace(".docx", ".pdf")
                 convert(ruta_modificado, ruta_pdf)
-
-                st.success(f"✅ PDF generado: {os.path.basename(ruta_pdf)}")
+               
+             # Crear ZIP con resultados
+            resultado_zip = "resultado.zip"
+            with zipfile.ZipFile(resultado_zip, 'w') as zipf:
+                for root, dirs, files in os.walk(temp_output):
+                    for file in files:
+                        zipf.write(os.path.join(root, file), file)
+        
             
-            st.balloons()
-            st.info(f"🎉 ¡Todos los documentos ({total}) han sido procesados y convertidos a PDF!")
+             # Mostrar enlace de descarga
+            with open(resultado_zip, "rb") as f:
+                st.download_button("⬇️ Descargar resultados (ZIP)", f, file_name="resultado.zip")
+
+            # Limpiar temporales
+            shutil.rmtree(temp_input)
+            shutil.rmtree(temp_output)
+            os.remove(resultado_zip)
+
+            st.success("🎉 Procesamiento completo y PDFs listos para descargar")
+
 
 
 
